@@ -102,7 +102,16 @@ pub async fn local_storage_roots() -> Result<Vec<String>, String> {
         }
         Ok(roots)
     }
-    #[cfg(not(target_os = "android"))]
+    #[cfg(target_os = "ios")]
+    {
+        // iOS is sandboxed: expose the app's Documents directory, which is
+        // visible in the Files app (UIFileSharingEnabled + LSSupportsOpeningDocumentsInPlace).
+        let home = std::env::var("HOME").map_err(|e| e.to_string())?;
+        let documents = std::path::Path::new(&home).join("Documents");
+        std::fs::create_dir_all(&documents).map_err(|e| e.to_string())?;
+        Ok(vec![documents.to_string_lossy().into_owned()])
+    }
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
         let home = std::env::var("HOME")
             .or_else(|_| std::env::var("USERPROFILE"))
@@ -141,16 +150,33 @@ pub async fn request_storage_access() -> Result<(), String> {
 }
 
 /// Acquire a Wi-Fi MulticastLock so mDNS discovery receives multicast
-/// frames. Called by discover_ps5 before starting the mDNS browse.
-#[cfg(target_os = "android")]
+/// frames. Android-only; no-op on iOS/desktop. Called by discover_ps5
+/// before starting the mDNS browse. Must stay a registered command on every
+/// platform, because the shared frontend always invokes it.
+#[tauri::command]
 pub async fn acquire_multicast_lock() -> Result<(), String> {
-    android::acquire_multicast_lock()
+    #[cfg(target_os = "android")]
+    {
+        android::acquire_multicast_lock()
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        Ok(())
+    }
 }
 
 /// Release the MulticastLock acquired by `acquire_multicast_lock`.
-#[cfg(target_os = "android")]
+/// Android-only; no-op on iOS/desktop.
+#[tauri::command]
 pub async fn release_multicast_lock() -> Result<(), String> {
-    android::release_multicast_lock()
+    #[cfg(target_os = "android")]
+    {
+        android::release_multicast_lock()
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        Ok(())
+    }
 }
 
 #[cfg(test)]

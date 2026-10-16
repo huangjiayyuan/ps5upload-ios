@@ -1,0 +1,119 @@
+name: Build unsigned iOS IPA
+
+# Produces an UNSIGNED arm64 .ipa on a GitHub-hosted macOS runner.
+# No Mac of your own and no Apple developer account are needed, as long as
+# you have a sideloading path (jailbreak + AppSync, TrollStore, AltStore,
+# Sideloadly, Signulous, ...).
+#
+# Runs only on the `ios` branch (or manually), so none of the other
+# workflows in this repo are triggered by pushing to it.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ios]
+    paths:
+      - '.github/workflows/ios-unsigned-ipa.yml'
+      - 'client/**'
+      - 'engine/**'
+      - 'payload/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-ipa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The client embeds the PS5-side payload ELFs at build time, so they have
+  # to exist before the iOS compile runs. Built on Linux with prospero-clang.
+  payload:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install LLVM and payload prerequisites
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 https://apt.llvm.org/llvm.sh -o /tmp/llvm-install.sh
+          sudo bash /tmp/llvm-install.sh 22
+          sudo apt-get install -y llvm-22-dev lld-22 unzip python3
+
+      - name: Install checksum-pinned PS5 SDK
+        run: sudo env PS5_SDK_INSTALL_DIR=/opt/ps5-payload-sdk bash scripts/install-ps5-sdk.sh
+
+      - name: Build real PS5 payloads
+        env:
+          PS5_PAYLOAD_SDK: /opt/ps5-payload-sdk
+          LLVM_CONFIG: /usr/bin/llvm-config-22
+        run: |
+          make payload
+          gzip -kf payload/ps5upload.elf payload/installer/ps5upload-installer.elf
+          gzip -t payload/ps5upload.elf.gz payload/installer/ps5upload-installer.elf.gz
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-payloads
+          path: |
+            payload/ps5upload.elf.gz
+            payload/installer/ps5upload-installer.elf.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  iphone:
+    needs: payload
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: client/src-tauri -> target
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: ios-payloads
+          path: payload
+
+      - name: Verify Apple toolchain
+        run: |
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-path
+          command -v pod || brew install cocoapods
+
+      # The repo already pins @tauri-apps/cli in devDependencies and exposes
+      # it as the `tauri` npm script, so `npm ci` is all we need here.
+      - name: Install frontend dependencies
+        working-directory: client
+        run: |
+          npm ci
+          npm run tauri -- --version
+
+      - name: Initialise iOS project
+        working-directory: client
+        run: npm run tauri -- ios init --ci
+
+      - name: Compile unsigned ARM64 IPA
+        working-directory: client
+        run: npm run tauri -- ios build --ci --target aarch64 --no-sign
+
+      - name: Validate and collect IPA
+        run: python3 scripts/verify-ios-ipa.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PS5Upload-iPhone-unsigned
+          path: dist/PS5Upload-iPhone-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 14
