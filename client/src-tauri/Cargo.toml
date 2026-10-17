@@ -144,6 +144,16 @@ ps5upload-engine = { path = "../../engine/crates/ps5upload-engine" }
 [target.'cfg(target_os = "android")'.dependencies]
 jni = "0.21"
 
+# iOS-only: stop WKWebView from insetting its scroll view by the safe area,
+# so the web viewport reaches the bottom of the screen instead of stopping at
+# the home indicator (which showed as a white band under the tab bar).
+# Only the bare runtime bindings are needed — the two UIKit selectors we touch
+# are sent as raw `msg_send!` with NSInteger discriminants, so we don't have to
+# depend on `objc2-ui-kit` and get its per-type feature flags right.
+# See src/ios_webview.rs.
+[target.'cfg(target_os = "ios")'.dependencies]
+objc2 = "0.6.4"
+
 [features]
 # Default: build Tauri-native (no custom features yet)
 default = []

@@ -1,4 +1,6 @@
+import { invoke } from "@tauri-apps/api/core";
 import { create } from "zustand";
+import { isIOS } from "../lib/platform";
 import { safeGetItem, safeSetItem } from "../lib/safeStorage";
 
 /** Four themes, two of each side:
@@ -94,6 +96,24 @@ function applyTheme(theme: Theme) {
   } else {
     document.documentElement.dataset.theme = theme;
   }
+  syncNativeChrome(theme);
+}
+
+/** Mirror the theme onto the native chrome.
+ *
+ *  The iOS status bar is drawn by the system, outside the DOM, so no CSS can
+ *  reach it. Left alone it keeps the system's default glyph colour — black —
+ *  which is invisible against every dark theme we ship. The host flips the
+ *  window's `overrideUserInterfaceStyle` instead, and we drive it from here so
+ *  the status bar tracks the *in-app* theme rather than the system appearance
+ *  (the two are independent: our theme lives in `data-theme`, not in
+ *  `prefers-color-scheme`).
+ *
+ *  Fire-and-forget: a browser build has no bridge, and a missing command must
+ *  never be able to break theming. */
+function syncNativeChrome(theme: Theme) {
+  if (!isIOS()) return;
+  void invoke("ios_set_appearance", { dark: isDarkTheme(theme) }).catch(() => {});
 }
 
 interface ThemeState {

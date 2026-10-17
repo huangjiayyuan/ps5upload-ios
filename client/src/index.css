@@ -346,6 +346,22 @@ body,
   background: transparent;
 }
 
+/* Landscape on a notched phone puts the sensor housing over the leading edge,
+ * and the same is true of the trailing edge in the other orientation. The
+ * shell has to stay clear of both. In portrait — and on every non-notched
+ * device — these resolve to 0, so this one rule covers all screen sizes and
+ * all orientations without a single hardcoded number.
+ *
+ * The vertical insets are deliberately NOT applied here: the top bar sizes
+ * itself with `env(safe-area-inset-top)` (`.h-top-bar`) and the bottom nav
+ * with `--safe-bottom` (`.h-bottom-nav`), because those need the inset to be
+ * part of their own painted background. Padding the root as well would
+ * double-count them. */
+#root {
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
 /* v5 §6.3 (mobile): kill the browser's pull-to-refresh globally. Also
  * prevents scroll chaining (a scroll reaching the edge propagating to
  * body). */

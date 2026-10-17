@@ -24,6 +24,10 @@
 pub(crate) const DEFAULT_ENGINE_URL: &str = "http://127.0.0.1:19113";
 
 mod linux_gpu;
+// Native host policy for the mobile web view: safe-area handling (the viewport
+// must be full-bleed, the CSS owns the insets) and status-bar appearance
+// (follows the in-app theme). No-ops off iOS. See the module doc.
+mod ios_webview;
 
 mod commands;
 // The engine runs as a spawned sidecar binary on desktop, but in-process
@@ -217,6 +221,28 @@ pub fn run() {
                     }
                 }
             });
+
+            // Native web-view host policy. On iOS this does two things:
+            //
+            // 1. Full-bleed viewport. The WKWebView's scroll view otherwise
+            //    insets itself by the safe area, so `window.innerHeight` stops
+            //    at the home indicator and the strip below is native
+            //    background — not part of the DOM, so no CSS can paint over it
+            //    (it showed as a white band under the tab bar). The page
+            //    already owns the insets through env(safe-area-inset-*) in
+            //    index.css, so the native side must stop adjusting them.
+            // 2. Status-bar glyphs that follow the in-app theme.
+            //
+            // No-op on every other target, hence the unconditional call.
+            {
+                use tauri::Manager;
+                if let Some(win) = app.get_webview_window("main") {
+                    if let Err(e) = ios_webview::configure_main(&win) {
+                        eprintln!("[tauri] webview host policy failed: {e}");
+                    }
+                }
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -572,6 +598,10 @@ pub fn run() {
             bg_activity::bg_work_hold,
             bg_activity::bg_configure,
             bg_activity::bg_capabilities,
+            // ── Host chrome ─────────────────────────────────────────
+            // Status-bar glyphs follow the in-app theme. The status bar is
+            // drawn by iOS, not the DOM, so it can't be styled from CSS.
+            ios_webview::ios_set_appearance,
         ])
         .build(tauri::generate_context!())
         .expect("tauri runtime failed to build");
@@ -586,6 +616,17 @@ pub fn run() {
     // without running to here at all — segfault, taskkill /F, OOM,
     // etc.), the engine never gets orphaned holding 19113.
     app.run(|_handle, event| {
+        // Belt and braces for the iOS safe-area fix. `setup` normally runs
+        // after the window exists, but the native WKWebView handle is only
+        // guaranteed once the runtime reports Ready. The call is idempotent,
+        // so applying it twice costs nothing.
+        #[cfg(target_os = "ios")]
+        if let tauri::RunEvent::Ready = event {
+            use tauri::Manager;
+            if let Some(win) = _handle.get_webview_window("main") {
+                let _ = ios_webview::configure_main(&win);
+            }
+        }
         if let tauri::RunEvent::Exit = event {
             // block_on is fine here: we're on the main thread, the
             // tauri runtime has already finished its event loop, and
