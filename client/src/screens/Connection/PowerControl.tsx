@@ -89,6 +89,12 @@ export default function PowerControl({ host }: { host: string }) {
         : "offline";
   const ui = wakeUi(power, !!credential, hasSessionKeys);
   const busy = wakeCtl.busy ? "wake" : runBusy;
+  // Rest mode, reboot and shut down go through the helper, which a sleeping console does not
+  // run: offered only while it is not known to be asleep.
+  const asleep = power === "standby";
+  const helperActionTitle = asleep
+    ? tr("status_ps5_rest_mode", undefined, "In rest mode")
+    : undefined;
   const runWake = () => wakeCtl.wake();
 
   async function run(
@@ -189,6 +195,13 @@ export default function PowerControl({ host }: { host: string }) {
       <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
         <Power size={15} className="text-[var(--color-accent-bright)]" />
         {tr("power_control_title", undefined, "PS5 power")}
+        {power !== "awake" ? (
+          <span className="ml-auto text-xs font-normal text-[var(--color-muted)]">
+            {asleep
+              ? tr("status_ps5_rest_mode", undefined, "In rest mode")
+              : tr("status_ps5_not_answering", undefined, "Not answering")}
+          </span>
+        ) : null}
       </div>
       <div className="flex flex-wrap items-center gap-2">
         {/* Only when it can actually work: the console is asleep and a wake
@@ -239,7 +252,8 @@ export default function PowerControl({ host }: { host: string }) {
               powerStandby,
             )
           }
-          disabled={busy !== null}
+          disabled={busy !== null || asleep}
+          title={helperActionTitle}
         >
           {tr("power_action_standby", undefined, "Rest mode")}
         </Button>
@@ -264,7 +278,8 @@ export default function PowerControl({ host }: { host: string }) {
               powerReboot,
             )
           }
-          disabled={busy !== null}
+          disabled={busy !== null || asleep}
+          title={helperActionTitle}
         >
           {tr("power_action_reboot", undefined, "Reboot")}
         </Button>
@@ -289,7 +304,8 @@ export default function PowerControl({ host }: { host: string }) {
               powerShutdown,
             )
           }
-          disabled={busy !== null}
+          disabled={busy !== null || asleep}
+          title={helperActionTitle}
         >
           {tr("power_action_shutdown", undefined, "Shut down")}
         </Button>

@@ -4,6 +4,19 @@ What's new in ps5upload, written for humans.
 
 ---
 
+## 7.0.32
+
+- **Rest mode is found on a computer with Wi-Fi and a cable at once.** A Mac on both, sending
+  through Wi-Fi, got "Host is down" from a sleeping PS5 and showed it as not answering, though
+  the same console answered "standby" over the cable. The app now asks every network connection
+  on the computer that shares the console's network, and treats "Host is down" as a reason to ask.
+  Wake goes out the same way, so it now reaches a sleeping console from such a computer too
+  (Mac, Linux and Android; Windows still uses its default connection).
+- **Wake is offered whenever the console isn't awake.** The PS5 power card showed Wake only when
+  it had confirmed rest mode; it now shows whenever wake is set up and the console isn't known
+  to be awake. The card says "In rest mode" or "Not answering", and greys out Rest mode, Reboot
+  and Shut down while the console sleeps, since those need the helper.
+
 ## 7.0.31
 
 - **Rest mode is shown as rest mode, not as a problem.** A PS5 in rest mode used to look the

@@ -162,10 +162,15 @@ pub fn require_in(pool: &Pool, console: &str, cap: u64) -> Result<(), UploadFail
 /// A session attempt that got no TCP answer at all (as opposed to a refusal): a timeout, or
 /// no route to the host. The console is off, elsewhere, or asleep.
 fn no_tcp_answer(e: &Ava1Error) -> bool {
-    use std::io::ErrorKind::{HostUnreachable, NetworkUnreachable, TimedOut};
+    use std::io::ErrorKind::{HostUnreachable, NetworkDown, NetworkUnreachable, TimedOut};
     match e {
         Ava1Error::Timeout => true,
-        Ava1Error::Io(io) => matches!(io.kind(), TimedOut | HostUnreachable | NetworkUnreachable),
+        Ava1Error::Io(io) => {
+            matches!(
+                io.kind(),
+                TimedOut | HostUnreachable | NetworkUnreachable | NetworkDown
+            ) || ps5upload_core::ddp::host_is_down(io)
+        }
         _ => false,
     }
 }
@@ -222,6 +227,15 @@ pub fn require_ava1(console: &str) -> Result<(), UploadFailure> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn host_is_down_counts_as_no_tcp_answer() {
+        let e = Ava1Error::Io(std::io::Error::from_raw_os_error(libc::EHOSTDOWN));
+        assert!(no_tcp_answer(&e));
+        let refused = Ava1Error::Io(std::io::ErrorKind::ConnectionRefused.into());
+        assert!(!no_tcp_answer(&refused));
+    }
 
     #[test]
     fn nothing_listening_is_helper_not_ava1_with_the_exact_message() {
